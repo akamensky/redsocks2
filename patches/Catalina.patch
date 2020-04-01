@@ -1,0 +1,71 @@
+diff --git a/Makefile b/Makefile
+index c1e064a..e9dff53 100644
+--- a/Makefile
++++ b/Makefile
+@@ -17,7 +17,11 @@ endif
+ ifeq ($(OS), Darwin)
+ override CFLAGS +=-I/usr/local/opt/openssl/include -L/usr/local/opt/openssl/lib
+ SHELL := /bin/bash
+-OSX_VERSION := $(shell sw_vers -productVersion | cut -d '.' -f 1,2)
++
++# uname -v | cut -d ';' -f 2 | cut -d ":" -f 2 | cut -d "/" -f 1
++# would return the exact XNU version MacOs was compiled with. For 10.15.4 it is: xnu-6153.101.6~15
++# see also: https://opensource.apple.com/source/xnu/
++OSX_VERSION := xnu-6153.11.26
+ OSX_ROOT_PATH := xnu
+ OSX_HEADERS_PATH := $(OSX_ROOT_PATH)/$(OSX_VERSION)
+ OSX_HEADERS := $(OSX_HEADERS_PATH)/net/pfvar.h $(OSX_HEADERS_PATH)/net/radix.h $(OSX_HEADERS_PATH)/libkern/tree.h
+@@ -100,11 +104,11 @@ base.c: $(CONF)
+ 
+ ifeq ($(OS), Darwin)
+ $(OSX_HEADERS_PATH)/net/pfvar.h:
+-	mkdir -p $(OSX_HEADERS_PATH)/net && curl -o $(OSX_HEADERS_PATH)/net/pfvar.h https://raw.githubusercontent.com/opensource-apple/xnu/$(OSX_VERSION)/bsd/net/pfvar.h
++	mkdir -p $(OSX_HEADERS_PATH)/net && curl -o $(OSX_HEADERS_PATH)/net/pfvar.h https://opensource.apple.com/source/xnu/$(OSX_VERSION)/bsd/net/pfvar.h
+ $(OSX_HEADERS_PATH)/net/radix.h:
+-	mkdir -p $(OSX_HEADERS_PATH)/net && curl -o $(OSX_HEADERS_PATH)/net/radix.h https://raw.githubusercontent.com/opensource-apple/xnu/$(OSX_VERSION)/bsd/net/radix.h
++	mkdir -p $(OSX_HEADERS_PATH)/net && curl -o $(OSX_HEADERS_PATH)/net/radix.h https://opensource.apple.com/source/xnu/$(OSX_VERSION)/bsd/net/radix.h
+ $(OSX_HEADERS_PATH)/libkern/tree.h:
+-	mkdir -p $(OSX_HEADERS_PATH)/libkern && curl -o $(OSX_HEADERS_PATH)/libkern/tree.h https://raw.githubusercontent.com/opensource-apple/xnu/$(OSX_VERSION)/libkern/libkern/tree.h
++	mkdir -p $(OSX_HEADERS_PATH)/libkern && curl -o $(OSX_HEADERS_PATH)/libkern/tree.h https://opensource.apple.com/source/xnu/$(OSX_VERSION)/libkern/libkern/tree.h
+ endif
+ 
+ $(DEPS): $(OSX_HEADERS) $(SRCS)
+diff --git a/base.c b/base.c
+index dcfe434..baeb92a 100644
+--- a/base.c
++++ b/base.c
+@@ -191,9 +191,9 @@ static int getdestaddr_pf(
+ 	char clientaddr_str[INET6_ADDRSTRLEN], bindaddr_str[INET6_ADDRSTRLEN];
+ 
+ 	memset(&nl, 0, sizeof(struct pfioc_natlook));
+-	nl.saddr.v4.s_addr = client->sin_addr.s_addr;
++	nl.saddr.v4addr.s_addr = client->sin_addr.s_addr;
+ 	nl.sport = client->sin_port;
+-	nl.daddr.v4.s_addr = bindaddr->sin_addr.s_addr;
++	nl.daddr.v4addr.s_addr = bindaddr->sin_addr.s_addr;
+ 	nl.dport = bindaddr->sin_port;
+ 	nl.af = AF_INET;
+ 	nl.proto = IPPROTO_TCP;
+@@ -212,7 +212,7 @@ static int getdestaddr_pf(
+ 	}
+ 	destaddr->sin_family = AF_INET;
+ 	destaddr->sin_port = nl.rdport;
+-	destaddr->sin_addr = nl.rdaddr.v4;
++	destaddr->sin_addr = nl.rdaddr.v4addr;
+ 	return 0;
+ 
+ fail:
+diff --git a/list.h b/list.h
+index 8200a16..805d3af 100644
+--- a/list.h
++++ b/list.h
+@@ -31,9 +31,6 @@ typedef struct list_head_t {
+ 
+ #define LIST_HEAD_INIT(name) { &(name), &(name) }
+ 
+-#define LIST_HEAD(name) \
+-	struct list_head_t name = LIST_HEAD_INIT(name)
+-
+ static inline void INIT_LIST_HEAD(struct list_head_t *list)
+ {
+ 	list->next = list;
